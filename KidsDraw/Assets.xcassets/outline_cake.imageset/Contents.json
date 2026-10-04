@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "outline_cake.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
