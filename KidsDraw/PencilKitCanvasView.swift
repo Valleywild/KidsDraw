@@ -23,6 +23,7 @@ struct PencilKitCanvasView: UIViewRepresentable {
         let containerView = CanvasContainerView()
         containerView.backgroundColor = .white
         containerView.clipsToBounds = true
+        containerView.overrideUserInterfaceStyle = .light
 
         // 1. Background Reference Line Art Image View
         let bgImageView = UIImageView()
@@ -33,6 +34,7 @@ struct PencilKitCanvasView: UIViewRepresentable {
 
         // 2. PencilKit Canvas View
         let canvasView = PKCanvasView()
+        canvasView.overrideUserInterfaceStyle = .light
         canvasView.drawingPolicy = .anyInput
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
@@ -91,6 +93,13 @@ struct PencilKitCanvasView: UIViewRepresentable {
             canvasView.frame = containerView.bounds
         }
 
+        if containerView.overrideUserInterfaceStyle != .light {
+            containerView.overrideUserInterfaceStyle = .light
+        }
+        if canvasView.overrideUserInterfaceStyle != .light {
+            canvasView.overrideUserInterfaceStyle = .light
+        }
+
         // Disable PK drawing interaction when in Stamp mode or Pan tool
         let shouldEnableDrawing = (viewModel.canvasMode == .drawing && viewModel.selectedTool != .pan)
         if canvasView.drawingGestureRecognizer.isEnabled != shouldEnableDrawing {
@@ -113,9 +122,14 @@ struct PencilKitCanvasView: UIViewRepresentable {
         private var lastColor: UIColor?
         private var lastStrokeWidth: CGFloat?
 
+        // Canonical paper and geometry definitions
+        static let canonicalCanvasSize = CGSize(width: 1400, height: 1400)
+        static let canonicalTemplateBox = CGRect(x: 360, y: 360, width: 680, height: 680)
+
         // Canvas geometry tracking in unscaled coordinate space
         private(set) var baseCanvasSize: CGSize = .zero
         private(set) var unscaledTemplateRect: CGRect = .zero
+        private var lastViewportSize: CGSize = .zero
 
         init(_ parent: PencilKitCanvasView) {
             self.parent = parent
@@ -162,6 +176,18 @@ struct PencilKitCanvasView: UIViewRepresentable {
                 self?.zoom(by: 0.8, animated: true)
             }
 
+            vm.getCanvasDrawing = { [weak self] in
+                return self?.canvasView?.drawing ?? PKDrawing()
+            }
+
+            vm.setCanvasDrawing = { [weak self] newDrawing in
+                guard let self = self, let canvasView = self.canvasView else { return }
+                canvasView.drawing = newDrawing
+                self.previousStrokesCount = newDrawing.strokes.count
+                canvasView.undoManager?.removeAllActions()
+                self.updateUndoState()
+            }
+
             vm.resetZoomCanvas = { [weak self] in
                 self?.resetToCenter(animated: true)
             }
@@ -206,7 +232,10 @@ struct PencilKitCanvasView: UIViewRepresentable {
         func resetToCenter(animated: Bool) {
             guard let canvasView = canvasView else { return }
             let targetScale: CGFloat = 1.0
-            let targetOffset = CGPoint.zero
+            let targetOffset = CGPoint(
+                x: (Self.canonicalCanvasSize.width - canvasView.bounds.width) / 2,
+                y: (Self.canonicalCanvasSize.height - canvasView.bounds.height) / 2
+            )
 
             if animated {
                 UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseOut]) {
@@ -260,6 +289,8 @@ struct PencilKitCanvasView: UIViewRepresentable {
                 tool = PKEraserTool(.vector)
             case .crayon:
                 tool = PKInkingTool(.crayon, color: uiColor, width: width)
+            case .pencil:
+                tool = PKInkingTool(.pencil, color: uiColor, width: width)
             case .pen:
                 tool = PKInkingTool(.pen, color: uiColor, width: width)
             case .marker:
@@ -271,30 +302,58 @@ struct PencilKitCanvasView: UIViewRepresentable {
 
         func handleContainerLayout() {
             guard let containerView = containerView, let canvasView = canvasView else { return }
-            let size = containerView.bounds.size
-            guard size.width > 0, size.height > 0 else { return }
+            let newViewportSize = containerView.bounds.size
+            guard newViewportSize.width > 0, newViewportSize.height > 0 else { return }
 
             if canvasView.frame != containerView.bounds {
                 canvasView.frame = containerView.bounds
             }
 
-            if baseCanvasSize != size {
-                baseCanvasSize = size
-                canvasView.contentSize = size
+            let isFirstLayout = (baseCanvasSize == .zero)
+            let oldViewportSize = lastViewportSize
+
+            if isFirstLayout {
+                baseCanvasSize = Self.canonicalCanvasSize
+                canvasView.contentSize = Self.canonicalCanvasSize
                 updateContentInsets()
                 recalculateTemplateRect()
+
+                // Center the canonical canvas initially in the viewport
+                let initialOffsetX = (Self.canonicalCanvasSize.width - newViewportSize.width) / 2
+                let initialOffsetY = (Self.canonicalCanvasSize.height - newViewportSize.height) / 2
+                canvasView.zoomScale = 1.0
+                canvasView.contentOffset = CGPoint(x: initialOffsetX, y: initialOffsetY)
+                parent.viewModel.zoomScale = 1.0
+                parent.viewModel.contentOffset = canvasView.contentOffset
+            } else if oldViewportSize != newViewportSize && oldViewportSize.width > 0 && oldViewportSize.height > 0 {
+                // Viewport size changed due to device rotation (e.g. portrait <-> landscape)
+                updateContentInsets()
+
+                // Seamlessly retain the visible focal center point across rotation
+                let currentScale = canvasView.zoomScale
+                let currentOffset = canvasView.contentOffset
+                let focalPointInCanvas = CGPoint(
+                    x: (currentOffset.x + oldViewportSize.width / 2) / currentScale,
+                    y: (currentOffset.y + oldViewportSize.height / 2) / currentScale
+                )
+
+                let newOffsetX = focalPointInCanvas.x * currentScale - newViewportSize.width / 2
+                let newOffsetY = focalPointInCanvas.y * currentScale - newViewportSize.height / 2
+                canvasView.contentOffset = CGPoint(x: newOffsetX, y: newOffsetY)
+                parent.viewModel.contentOffset = canvasView.contentOffset
             }
+
+            lastViewportSize = newViewportSize
             updateReferenceImage()
         }
 
         func updateContentInsets() {
             guard let canvasView = canvasView else { return }
-            let width = baseCanvasSize.width
-            let height = baseCanvasSize.height
-            guard width > 0, height > 0 else { return }
+            let viewportWidth = canvasView.bounds.width > 0 ? canvasView.bounds.width : 820
+            let viewportHeight = canvasView.bounds.height > 0 ? canvasView.bounds.height : 1180
 
-            let padW = width * 0.85
-            let padH = height * 0.85
+            let padW = viewportWidth * 0.85
+            let padH = viewportHeight * 0.85
             let targetInsets = UIEdgeInsets(top: padH, left: padW, bottom: padH, right: padW)
             if canvasView.contentInset != targetInsets {
                 canvasView.contentInset = targetInsets
@@ -302,13 +361,12 @@ struct PencilKitCanvasView: UIViewRepresentable {
         }
 
         private func recalculateTemplateRect() {
-            guard let image = backgroundImageView?.image,
-                  baseCanvasSize.width > 0, baseCanvasSize.height > 0 else {
-                unscaledTemplateRect = .zero
+            guard let image = backgroundImageView?.image else {
+                unscaledTemplateRect = Self.canonicalTemplateBox
                 return
             }
-            let canvasRect = CGRect(origin: .zero, size: baseCanvasSize)
-            unscaledTemplateRect = Self.aspectFit(imageSize: image.size, in: canvasRect.insetBy(dx: 60, dy: 60))
+            // Fit template inside canonicalTemplateBox, keeping its center rigidly locked at (700, 700)
+            unscaledTemplateRect = Self.aspectFit(imageSize: image.size, in: Self.canonicalTemplateBox)
         }
 
         func updateReferenceImage() {
@@ -319,7 +377,7 @@ struct PencilKitCanvasView: UIViewRepresentable {
             if bgImageView.image !== currentImg {
                 bgImageView.image = currentImg
                 recalculateTemplateRect()
-            } else if unscaledTemplateRect == .zero && currentImg != nil {
+            } else if unscaledTemplateRect == .zero {
                 recalculateTemplateRect()
             }
 
@@ -399,10 +457,7 @@ struct PencilKitCanvasView: UIViewRepresentable {
         }
 
         private func renderImage(from canvasView: PKCanvasView, includeBackground: Bool) -> UIImage? {
-            let baseSize = baseCanvasSize.width > 0 && baseCanvasSize.height > 0
-                ? baseCanvasSize
-                : (canvasView.bounds.size.width > 0 ? canvasView.bounds.size : CGSize(width: 1024, height: 768))
-
+            let baseSize = Self.canonicalCanvasSize
             let exportBounds = CGRect(origin: .zero, size: baseSize)
 
             let format = UIGraphicsImageRendererFormat()
@@ -414,11 +469,10 @@ struct PencilKitCanvasView: UIViewRepresentable {
                 UIColor.white.setFill()
                 ctx.fill(exportBounds)
 
-                // 2. Reference line art if visible
+                // 2. Reference line art if visible (strictly drawn in the exact same unscaledTemplateRect)
                 let vm = parent.viewModel
                 if includeBackground && vm.showReferenceLine, let outlineImage = vm.currentTemplateImage {
-                    let fitRect = Coordinator.aspectFit(imageSize: outlineImage.size, in: exportBounds.insetBy(dx: 60, dy: 60))
-                    outlineImage.draw(in: fitRect, blendMode: .normal, alpha: CGFloat(vm.referenceOpacity))
+                    outlineImage.draw(in: unscaledTemplateRect, blendMode: .normal, alpha: CGFloat(vm.referenceOpacity))
                 }
 
                 // 3. User drawing strokes rendered in high resolution

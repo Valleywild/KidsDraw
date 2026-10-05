@@ -52,13 +52,112 @@ enum CanvasAction: Equatable {
     case stamp(id: UUID)
 }
 
+// MARK: - App Appearance Mode (Light / Dark / System)
+enum AppAppearanceMode: String, CaseIterable, Identifiable {
+    case light = "light"
+    case dark = "dark"
+    case system = "system"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .light: return "浅色模式"
+        case .dark: return "深色模式"
+        case .system: return "跟随系统"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .light: return "浅色"
+        case .dark: return "深色"
+        case .system: return "系统"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .light: return "sun.max.fill"
+        case .dark: return "moon.stars.fill"
+        case .system: return "circle.righthalf.filled"
+        }
+    }
+}
+
+// MARK: - Drawing Brush Types
+enum DrawingBrushType: String, CaseIterable, Identifiable {
+    case crayon = "crayon"
+    case pencil = "pencil"
+    case pen = "pen"
+    case marker = "marker"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .crayon: return "蜡笔"
+        case .pencil: return "铅笔"
+        case .pen: return "钢笔"
+        case .marker: return "马克笔"
+        }
+    }
+
+    var emoji: String {
+        switch self {
+        case .crayon: return "🖍️"
+        case .pencil: return "✏️"
+        case .pen: return "✒️"
+        case .marker: return "🖌️"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .crayon: return "经典蜡质涂色"
+        case .pencil: return "细腻素描线条"
+        case .pen: return "圆润顺滑勾线"
+        case .marker: return "鲜艳涂鸦高光"
+        }
+    }
+
+    var canvasToolType: CanvasToolType {
+        switch self {
+        case .crayon: return .crayon
+        case .pencil: return .pencil
+        case .pen: return .pen
+        case .marker: return .marker
+        }
+    }
+}
+
 // MARK: - Tool Types
 enum CanvasToolType: Equatable {
     case crayon
+    case pencil
     case pen
     case marker
     case eraser
     case pan // ✋ 移动 / 漫游
+
+    var isDrawingBrush: Bool {
+        switch self {
+        case .crayon, .pencil, .pen, .marker:
+            return true
+        case .eraser, .pan:
+            return false
+        }
+    }
+
+    var brushType: DrawingBrushType? {
+        switch self {
+        case .crayon: return .crayon
+        case .pencil: return .pencil
+        case .pen: return .pen
+        case .marker: return .marker
+        case .eraser, .pan: return nil
+        }
+    }
 }
 
 // MARK: - Stroke Width / Stamp Size Presets
@@ -159,9 +258,9 @@ final class DrawingViewModel: ObservableObject {
         CrayonColor(
             id: "black",
             name: "黑",
-            color: Color(red: 0.14, green: 0.14, blue: 0.16),
-            uiColor: UIColor(red: 0.14, green: 0.14, blue: 0.16, alpha: 1.0),
-            tipColor: Color(red: 0.06, green: 0.06, blue: 0.08)
+            color: Color(red: 0.08, green: 0.08, blue: 0.08),
+            uiColor: UIColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0),
+            tipColor: Color.black
         ),
         CrayonColor(
             id: "pink",
@@ -257,6 +356,14 @@ final class DrawingViewModel: ObservableObject {
 
     // Active tool state (Drawing mode)
     @Published var selectedColor: CrayonColor = DrawingViewModel.standardColors[0]
+    @Published var currentBrush: DrawingBrushType = {
+        let saved = UserDefaults.standard.string(forKey: "app_active_brush") ?? DrawingBrushType.crayon.rawValue
+        return DrawingBrushType(rawValue: saved) ?? .crayon
+    }() {
+        didSet {
+            UserDefaults.standard.set(currentBrush.rawValue, forKey: "app_active_brush")
+        }
+    }
     @Published var selectedTool: CanvasToolType = .crayon
     @Published var strokePreset: StrokePreset = .medium
 
@@ -288,7 +395,43 @@ final class DrawingViewModel: ObservableObject {
     @Published var canRedo: Bool = false
     @Published var showClearConfirmation: Bool = false
 
+    // Appearance Mode State
+    @Published var appearanceMode: AppAppearanceMode = {
+        let saved = UserDefaults.standard.string(forKey: "app_appearance_mode") ?? AppAppearanceMode.light.rawValue
+        return AppAppearanceMode(rawValue: saved) ?? .light
+    }() {
+        didSet {
+            UserDefaults.standard.set(appearanceMode.rawValue, forKey: "app_appearance_mode")
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch appearanceMode {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return nil
+        }
+    }
+
+    func setAppearanceMode(_ mode: AppAppearanceMode) {
+        guard appearanceMode != mode else { return }
+        appearanceMode = mode
+        playHapticFeedback()
+    }
+
+    func toggleAppearanceMode() {
+        switch appearanceMode {
+        case .light:
+            setAppearanceMode(.dark)
+        case .dark:
+            setAppearanceMode(.light)
+        case .system:
+            setAppearanceMode(.dark)
+        }
+    }
+
     // Save Feedback
+    @Published var isSaving: Bool = false
     @Published var showSaveSuccessBanner: Bool = false
     @Published var saveErrorMessage: String? = nil
 
@@ -296,10 +439,16 @@ final class DrawingViewModel: ObservableObject {
     var undoCanvas: (() -> Void)?
     var redoCanvas: (() -> Void)?
     var clearCanvas: (() -> Void)?
+    var getCanvasDrawing: (() -> PKDrawing)?
+    var setCanvasDrawing: ((PKDrawing) -> Void)?
     var captureCanvasImage: ((_ includeBackground: Bool) -> UIImage?)?
     var zoomInCanvas: (() -> Void)?
     var zoomOutCanvas: (() -> Void)?
     var resetZoomCanvas: (() -> Void)?
+
+    // Multi-Artwork Drawing Storage per Template
+    private var templateDrawings: [String: PKDrawing] = [:]
+    private var templateStamps: [String: [PlacedStamp]] = [:]
 
     var currentTemplate: DrawingTemplateItem {
         templateManager.template(for: selectedTemplateId) ?? TemplateManager.builtInTemplates[0]
@@ -318,7 +467,17 @@ final class DrawingViewModel: ObservableObject {
     }
 
     var selectedStrokeWidth: CGFloat {
-        CGFloat(strokePreset.rawValue)
+        let base = CGFloat(strokePreset.rawValue)
+        switch currentBrush {
+        case .crayon:
+            return base
+        case .pencil:
+            return max(3, base * 0.65)
+        case .pen:
+            return max(3, base * 0.55)
+        case .marker:
+            return base * 1.25
+        }
     }
 
     // MARK: - Actions
@@ -330,24 +489,72 @@ final class DrawingViewModel: ObservableObject {
     }
 
     func selectTemplate(_ template: DrawingTemplateItem) {
+        guard selectedTemplateId != template.id else { return }
+
+        // 1. Save current template's drawing and stamps
+        if let currentDrawing = getCanvasDrawing?() {
+            templateDrawings[selectedTemplateId] = currentDrawing
+        }
+        templateStamps[selectedTemplateId] = stamps
+
+        // 2. Switch template ID
         selectedTemplateId = template.id
         showReferenceLine = true
+
+        // 3. Load target template's drawing (empty by default for new canvas)
+        let targetDrawing = templateDrawings[template.id] ?? PKDrawing()
+        let targetStamps = templateStamps[template.id] ?? []
+
+        stamps = targetStamps
+        setCanvasDrawing?(targetDrawing)
+
+        // 4. Reset action history for the new template
+        actionHistory.removeAll()
+        redoHistory.removeAll()
+        removedStampsCache.removeAll()
+        pkCanUndo = false
+        pkCanRedo = false
+        updateUndoRedoState()
+
+        // 5. Reset zoom and center
         resetZoom()
         playHapticFeedback()
     }
 
     func deleteTemplate(_ template: DrawingTemplateItem) {
+        templateDrawings.removeValue(forKey: template.id)
+        templateStamps.removeValue(forKey: template.id)
         if selectedTemplateId == template.id {
-            selectedTemplateId = "bear"
+            if let fallback = TemplateManager.builtInTemplates.first(where: { $0.id != template.id }) {
+                selectTemplate(fallback)
+            } else {
+                selectedTemplateId = "bear"
+            }
         }
         templateManager.deleteCustomTemplate(template)
         playHapticFeedback()
     }
 
+    func selectBrush(_ brush: DrawingBrushType) {
+        currentBrush = brush
+        selectedTool = brush.canvasToolType
+        playHapticFeedback()
+    }
+
+    func cycleNextBrush() {
+        let all = DrawingBrushType.allCases
+        if let idx = all.firstIndex(of: currentBrush) {
+            let nextIndex = (idx + 1) % all.count
+            selectBrush(all[nextIndex])
+        } else {
+            selectBrush(.crayon)
+        }
+    }
+
     func selectCrayonColor(_ crayon: CrayonColor) {
         selectedColor = crayon
         if selectedTool == .eraser || selectedTool == .pan {
-            selectedTool = .crayon
+            selectedTool = currentBrush.canvasToolType
         }
         playHapticFeedback()
     }
@@ -368,7 +575,7 @@ final class DrawingViewModel: ObservableObject {
         customCrayon = custom
         selectedColor = custom
         if selectedTool == .eraser || selectedTool == .pan {
-            selectedTool = .crayon
+            selectedTool = currentBrush.canvasToolType
         }
         playHapticFeedback()
     }
@@ -487,6 +694,8 @@ final class DrawingViewModel: ObservableObject {
     }
 
     func confirmClear() {
+        templateDrawings.removeValue(forKey: selectedTemplateId)
+        templateStamps.removeValue(forKey: selectedTemplateId)
         stamps.removeAll()
         actionHistory.removeAll()
         redoHistory.removeAll()
@@ -519,9 +728,8 @@ final class DrawingViewModel: ObservableObject {
 
         Task {
             let newIds = await templateManager.importBatchPhotos(items: items)
-            if let lastId = newIds.last {
-                selectedTemplateId = lastId
-                showReferenceLine = true
+            if let lastId = newIds.last, let newTemplate = templateManager.template(for: lastId) {
+                selectTemplate(newTemplate)
                 playSuccessHaptic()
             }
             batchPhotosSelection = []
@@ -530,8 +738,12 @@ final class DrawingViewModel: ObservableObject {
 
     // MARK: - Save to Photos
     func saveToPhotos() {
+        guard !isSaving else { return }
+        isSaving = true
+
         guard let image = captureCanvasImage?(true) else {
             saveErrorMessage = "画作生成失败"
+            isSaving = false
             return
         }
 
@@ -540,31 +752,35 @@ final class DrawingViewModel: ObservableObject {
                 guard let self = self else { return }
                 switch status {
                 case .authorized, .limited:
-                    UIImageWriteToSavedPhotosAlbum(
-                        image,
-                        self,
-                        #selector(self.image(_:didFinishSavingWithError:contextInfo:)),
-                        nil
-                    )
+                    PHPhotoLibrary.shared().performChanges({
+                        PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    }) { [weak self] success, error in
+                        DispatchQueue.main.async {
+                            guard let self = self else { return }
+                            self.isSaving = false
+                            if success {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                    self.showSaveSuccessBanner = true
+                                }
+                                self.playSuccessHaptic()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        self?.showSaveSuccessBanner = false
+                                    }
+                                }
+                            } else {
+                                self.saveErrorMessage = error?.localizedDescription ?? "保存失败，请稍后重试"
+                            }
+                        }
+                    }
                 case .denied, .restricted:
+                    self.isSaving = false
                     self.saveErrorMessage = "请在“设置”中允许 KidsDraw 访问相册"
                 case .notDetermined:
-                    break
+                    self.isSaving = false
                 @unknown default:
-                    break
+                    self.isSaving = false
                 }
-            }
-        }
-    }
-
-    @objc func image(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
-        if let error = error {
-            self.saveErrorMessage = "保存失败: \(error.localizedDescription)"
-        } else {
-            self.showSaveSuccessBanner = true
-            playSuccessHaptic()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-                self?.showSaveSuccessBanner = false
             }
         }
     }

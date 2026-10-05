@@ -55,7 +55,7 @@ struct TemplatePickerSheet: View {
                     }
                 }
             }
-            .background(Color(red: 0.95, green: 0.96, blue: 0.98).ignoresSafeArea())
+            .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("🖼️ 选择画画底稿")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -142,7 +142,7 @@ struct TemplateCardView: View {
 
                 // Divider line
                 Rectangle()
-                    .fill(Color.black.opacity(0.06))
+                    .fill(Color.primary.opacity(0.08))
                     .frame(height: 1)
 
                 // Bottom Title Card
@@ -152,13 +152,13 @@ struct TemplateCardView: View {
 
                     Text(template.name)
                         .font(.system(size: 14, weight: .heavy, design: .rounded))
-                        .foregroundColor(Color(red: 0.15, green: 0.2, blue: 0.35))
+                        .foregroundColor(Color.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(isSelected ? Color(red: 1.0, green: 0.96, blue: 0.88) : Color.white.opacity(0.95))
+                .background(isSelected ? Color.orange.opacity(0.18) : Color(UIColor.secondarySystemGroupedBackground))
             }
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
@@ -166,7 +166,7 @@ struct TemplateCardView: View {
                     .strokeBorder(
                         isSelected
                             ? Color(red: 1.0, green: 0.65, blue: 0.0)
-                            : Color.white.opacity(0.8),
+                            : Color.primary.opacity(0.12),
                         lineWidth: isSelected ? 3.5 : 1.2
                     )
             )

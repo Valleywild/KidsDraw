@@ -44,7 +44,7 @@ struct ColorPalettePickerSheet: View {
         // Earth & Neutrals
         ("巧克力", Color(red: 0.45, green: 0.25, blue: 0.12), UIColor(red: 0.45, green: 0.25, blue: 0.12, alpha: 1.0)),
         ("咖啡棕", Color(red: 0.65, green: 0.40, blue: 0.25), UIColor(red: 0.65, green: 0.40, blue: 0.25, alpha: 1.0)),
-        ("纯黑", Color(red: 0.10, green: 0.10, blue: 0.12), UIColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1.0)),
+        ("纯黑", Color.black, UIColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0)),
         ("浅灰", Color(red: 0.75, green: 0.75, blue: 0.78), UIColor(red: 0.75, green: 0.75, blue: 0.78, alpha: 1.0))
     ]
 
@@ -56,7 +56,7 @@ struct ColorPalettePickerSheet: View {
             HStack {
                 Text("🎨 调色盘色块")
                     .font(.system(size: 24, weight: .heavy, design: .rounded))
-                    .foregroundColor(Color(red: 0.15, green: 0.2, blue: 0.35))
+                    .foregroundColor(Color.primary)
 
                 Spacer()
 
@@ -104,7 +104,7 @@ struct ColorPalettePickerSheet: View {
             HStack(spacing: 16) {
                 ColorPicker("✨ 自由颜色调配盘", selection: $freeColor, supportsOpacity: false)
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(Color(red: 0.2, green: 0.25, blue: 0.35))
+                    .foregroundColor(Color.primary)
                     .onChange(of: freeColor) { _, newColor in
                         let uiColor = UIColor(newColor)
                         viewModel.applyCustomColor(color: newColor, uiColor: uiColor, name: "自定义")
@@ -129,7 +129,7 @@ struct ColorPalettePickerSheet: View {
             }
         }
         .padding(24)
-        .background(Color.white)
+        .background(Color(UIColor.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 }

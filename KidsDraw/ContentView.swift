@@ -16,18 +16,23 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             // 2. Overlaid Interface Controls
-            VStack(spacing: 0) {
-                // Top Toolbar (Liquid Glass style)
-                TopBarView(viewModel: viewModel)
-                    .padding(.top, 8)
-                    .padding(.horizontal, 16)
+            GeometryReader { geometry in
+                let isCompact = geometry.size.width < geometry.size.height || geometry.size.width < 960
 
-                Spacer()
+                VStack(spacing: 0) {
+                    // Top Toolbar (Liquid Glass style)
+                    TopBarView(viewModel: viewModel, isCompact: isCompact)
+                        .padding(.top, 8)
+                        .padding(.horizontal, isCompact ? 10 : 16)
 
-                // Bottom Floating Island Bar (Liquid Glass style)
-                BottomBarView(viewModel: viewModel)
-                    .padding(.bottom, 12)
-                    .padding(.horizontal, 16)
+                    Spacer()
+
+                    // Bottom Floating Island Bar (Liquid Glass style)
+                    BottomBarView(viewModel: viewModel, isCompact: isCompact)
+                        .padding(.bottom, 12)
+                        .padding(.horizontal, isCompact ? 10 : 16)
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
 
             // 3. Right-Side Chunky Crayon Palette (Liquid Glass style, vertically centered)
@@ -77,18 +82,27 @@ struct ContentView: View {
 
             // 6. Save Celebration Banner
             if viewModel.showSaveSuccessBanner {
-                SaveSuccessCelebrationBanner()
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                VStack {
+                    SaveSuccessCelebrationBanner()
+                        .padding(.top, 84)
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(100)
             }
         }
+        .preferredColorScheme(viewModel.colorScheme)
         .statusBarHidden(true)
         .sheet(isPresented: $viewModel.showColorPickerSheet) {
             ColorPalettePickerSheet(viewModel: viewModel)
                 .presentationDetents([.medium, .large])
+                .preferredColorScheme(viewModel.colorScheme)
         }
         .sheet(isPresented: $viewModel.showTemplatePickerSheet) {
             TemplatePickerSheet(viewModel: viewModel)
                 .presentationDetents([.large])
+                .preferredColorScheme(viewModel.colorScheme)
         }
         .alert("温馨提示", isPresented: Binding(
             get: { viewModel.saveErrorMessage != nil },
@@ -104,35 +118,31 @@ struct ContentView: View {
 // MARK: - Save Celebration Banner
 struct SaveSuccessCelebrationBanner: View {
     var body: some View {
-        VStack {
-            HStack(spacing: 14) {
-                Text("🌟")
-                    .font(.system(size: 38))
+        HStack(spacing: 14) {
+            Text("🌟")
+                .font(.system(size: 38))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("画得太棒啦！")
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
-                        .foregroundColor(Color(red: 0.15, green: 0.2, blue: 0.3))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("画得太棒啦！")
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundColor(Color.primary)
 
-                    Text("画作已经成功保存到相册啦 ⭐")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundColor(Color.secondary)
-                }
-
-                Text("🎉")
-                    .font(.system(size: 38))
+                Text("画作已经成功保存到相册啦 ⭐")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.secondary)
             }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 28)
-            .liquidGlass(cornerRadius: 24)
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(Color.yellow, lineWidth: 3)
-            )
-            .padding(.top, 84)
 
-            Spacer()
+            Text("🎉")
+                .font(.system(size: 38))
         }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 28)
+        .liquidGlass(cornerRadius: 24)
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.yellow, lineWidth: 3)
+                .allowsHitTesting(false)
+        )
         .allowsHitTesting(false)
     }
 }
@@ -155,7 +165,7 @@ struct ClearConfirmOverlay: View {
 
                 Text("要擦干净重新画吗？")
                     .font(.system(size: 24, weight: .heavy, design: .rounded))
-                    .foregroundColor(Color(red: 0.15, green: 0.2, blue: 0.35))
+                    .foregroundColor(Color.primary)
 
                 HStack(spacing: 20) {
                     Button(action: {
@@ -163,9 +173,9 @@ struct ClearConfirmOverlay: View {
                     }) {
                         Text("不小心按错了")
                             .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundColor(Color(red: 0.3, green: 0.35, blue: 0.45))
+                            .foregroundColor(Color.primary.opacity(0.8))
                             .frame(width: 160, height: 56)
-                            .background(Color.gray.opacity(0.15))
+                            .background(Color(UIColor.secondarySystemFill))
                             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
                     .buttonStyle(BouncyButtonStyle())

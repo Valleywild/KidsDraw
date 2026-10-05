@@ -12,7 +12,7 @@ struct CrayonPaletteView: View {
                     ForEach(DrawingViewModel.standardColors) { crayon in
                         CrayonButton(
                             crayon: crayon,
-                            isSelected: viewModel.selectedTool != .eraser && viewModel.selectedColor.id == crayon.id
+                            isSelected: viewModel.selectedTool.isDrawingBrush && viewModel.selectedColor.id == crayon.id
                         ) {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                                 viewModel.selectCrayonColor(crayon)
@@ -24,7 +24,7 @@ struct CrayonPaletteView: View {
                     if let custom = viewModel.customCrayon {
                         CrayonButton(
                             crayon: custom,
-                            isSelected: viewModel.selectedTool != .eraser && viewModel.selectedColor.id == custom.id
+                            isSelected: viewModel.selectedTool.isDrawingBrush && viewModel.selectedColor.id == custom.id
                         ) {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                                 viewModel.selectCrayonColor(custom)
@@ -33,7 +33,7 @@ struct CrayonPaletteView: View {
                     }
 
                     Rectangle()
-                        .fill(Color.black.opacity(0.1))
+                        .fill(Color.primary.opacity(0.12))
                         .frame(width: 60, height: 1.5)
                         .padding(.vertical, 2)
 
@@ -46,20 +46,14 @@ struct CrayonPaletteView: View {
                                 .font(.system(size: 20))
                             Text("调色盘")
                                 .font(.system(size: 13, weight: .heavy, design: .rounded))
-                                .foregroundColor(Color(red: 0.2, green: 0.25, blue: 0.4))
+                                .foregroundColor(Color.primary)
                         }
                         .frame(width: 76, height: 42)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.white, Color(red: 0.95, green: 0.96, blue: 1.0)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
+                        .background(Color(UIColor.secondarySystemFill))
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color(red: 0.8, green: 0.85, blue: 0.95), lineWidth: 1.5)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 1.5)
                         )
                         .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
                     }
